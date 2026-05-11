@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Kiddow Adventure - Automatic Minimap Indicators</title>
+    <style>
+        body { margin: 0; background-color: #1a1a1a; overflow: hidden; font-family: sans-serif; }
+        #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        #world { position: absolute; width: 3000px; height: 3000px; will-change: transform; }
+        canvas { display: block; image-rendering: pixelated; position: absolute; top: 0; left: 0; z-index: 0; }
+        
+        #player {
+            width: 200px; height: 200px; position: absolute;
+            background-size: 1000px 1000px; background-repeat: no-repeat;
+            will-change: transform, left, top; margin-left: -100px; margin-top: -180px;
+            pointer-events: none;
+        }
+
+        /* --- MINIMAP STYLING --- */
+        #minimap-container {
+            position: fixed; top: 10px; right: 10px;
+            width: 150px; height: 150px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #fff; border-radius: 8px;
+            z-index: 10001; overflow: hidden;
+        }
+        #minimap-player {
+            position: absolute; width: 8px; height: 8px;
+            background: #00ff00; border-radius: 50%; /* Hijau untuk Player */
+            transform: translate(-50%, -50%); z-index: 10;
+            box-shadow: 0 0 5px #00ff00;
+        }
+        .minimap-dot {
+            position: absolute; width: 6px; height: 6px;
+            background: yellow; border-radius: 2px;
+            transform: translate(-50%, -50%); z-index: 5;
+        }
+
+        #ui {
+            position: fixed; top: 10px; left: 10px;
+            color: white; background: rgba(0,0,0,0.6);
+            padding: 12px; border-radius: 8px;
+            z-index: 10000; border: 1px solid rgba(255,255,255,0.2);
+        }
+        .building-object { position: absolute; transform-origin: bottom center; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <b>Kiddow Adventure: South Jakarta</b><br>
+        Indikator Kuning = Lokasi Gedung/Objek
+    </div>
+
+    <div id="minimap-container" id="minimap">
+        <div id="minimap-player"></div>
+        <!-- Indikator objek lain akan muncul di sini secara otomatis -->
+    </div>
+    
+    <div id="game-container">
+        <div id="world">
+            <canvas id="forestCanvas"></canvas>
+            <div id="player"></div>
+            <div id="objects-layer"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('forestCanvas');
+        const ctx = canvas.getContext('2d');
+        const world = document.getElementById('world');
+        const player = document.getElementById('player');
+        const objectsLayer = document.getElementById('objects-layer');
+        const minimap = document.getElementById('minimap-container');
+        const miniPlayer = document.getElementById('minimap-player');
+
+        const WORLD_SIZE = 3000;
+        const miniSize = 150;
+        canvas.width = WORLD_SIZE;
+        canvas.height = WORLD_SIZE;
+
+        const URL_IDLE = 'https://firstian84.github.io/game_siderunner/firstianKIDDOW-idle.png';
+        const URL_RUN = 'https://firstian84.github.io/game_siderunner/firstianKIDDOW-run.png';
+        const URL_GEDUNG = 'https://firstian84.github.io/game_siderunner/resjaksel.png';
+
+        let posX = WORLD_SIZE / 2;
+        let posY = WORLD_SIZE / 2 + 500; 
+        let speed = 5;
+        let currentFrame = 0;
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        // Fungsi otomatis tambah objek ke dunia DAN minimap
+        function addObject(x, y, width, height, imgUrl) {
+            // 1. Tambah ke Dunia
+            const div = document.createElement('div');
+            div.className = 'building-object';
+            div.style.width = width + 'px';
+            div.style.height = height + 'px';
+            div.style.left = (x - width/2) + 'px';
+            div.style.top = (y - height) + 'px';
+            div.style.backgroundImage = `url(${imgUrl})`;
+            div.style.backgroundSize = 'contain';
+            div.style.backgroundRepeat = 'no-repeat';
+            div.style.zIndex = Math.floor(y);
+            objectsLayer.appendChild(div);
+
+            // 2. Tambah Indikator ke Minimap
+            const dot = document.createElement('div');
+            dot.className = 'minimap-dot';
+            dot.style.left = (x / WORLD_SIZE * miniSize) + 'px';
+            dot.style.top = (y / WORLD_SIZE * miniSize) + 'px';
+            minimap.appendChild(dot);
+        }
+
+        function initLevel() {
+            // Gambar Rumput
+            ctx.fillStyle = '#2d5e32';
+            ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+            
+            // Tambahkan Gedung (Ukuran disesuaikan agar terlihat: 1200x800)
+            addObject(WORLD_SIZE/2, WORLD_SIZE/2, 1200, 800, URL_GEDUNG);
+            
+            // Tambah objek contoh lain (opsional) untuk tes minimap
+            addObject(500, 500, 400, 300, URL_GEDUNG); 
+            addObject(2500, 2000, 400, 300, URL_GEDUNG);
+        }
+
+        function update() {
+            let dirX = 0;
+            if (keys.ArrowUp) posY -= speed;
+            if (keys.ArrowDown) posY += speed;
+            if (keys.ArrowLeft) { posX -= speed; dirX = -1; }
+            if (keys.ArrowRight) { posX += speed; dirX = 1; }
+
+            posX = Math.max(0, Math.min(WORLD_SIZE, posX));
+            posY = Math.max(0, Math.min(WORLD_SIZE, posY));
+
+            player.style.left = posX + 'px';
+            player.style.top = posY + 'px';
+            player.style.zIndex = Math.floor(posY);
+            if (dirX !== 0) player.style.transform = `scaleX(${dirX})`;
+
+            // Kamera
+            const camX = -posX + (window.innerWidth / 2);
+            const camY = -posY + (window.innerHeight / 2);
+            world.style.transform = `translate(${camX}px, ${camY}px)`;
+
+            // Update Player di Minimap
+            miniPlayer.style.left = (posX / WORLD_SIZE * miniSize) + 'px';
+            miniPlayer.style.top = (posY / WORLD_SIZE * miniSize) + 'px';
+            
+            requestAnimationFrame(update);
+        }
+
+        function animateSprite() {
+            const isMoving = keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight;
+            player.style.backgroundImage = isMoving ? `url('${URL_RUN}')` : `url('${URL_IDLE}')`;
+            const col = currentFrame % 5;
+            const row = Math.floor(currentFrame / 5);
+            player.style.backgroundPosition = `-${col * 200}px -${row * 200}px`;
+            currentFrame = (currentFrame + 1) % 25;
+        }
+
+        window.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+        initLevel();
+        setInterval(animateSprite, 60); 
+        update();
+    </script>
+</body>
+</html>
