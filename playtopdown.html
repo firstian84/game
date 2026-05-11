@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Kiddow Adventure - Automatic Minimap Indicators</title>
+    <title>Kiddow Adventure - Interactive Buildings</title>
     <style>
         body { margin: 0; background-color: #1a1a1a; overflow: hidden; font-family: sans-serif; }
         #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
@@ -26,7 +26,7 @@
         }
         #minimap-player {
             position: absolute; width: 8px; height: 8px;
-            background: #00ff00; border-radius: 50%; /* Hijau untuk Player */
+            background: #00ff00; border-radius: 50%;
             transform: translate(-50%, -50%); z-index: 10;
             box-shadow: 0 0 5px #00ff00;
         }
@@ -42,19 +42,31 @@
             padding: 12px; border-radius: 8px;
             z-index: 10000; border: 1px solid rgba(255,255,255,0.2);
         }
+        
+        /* Notifikasi Interaksi */
+        #interaction-msg {
+            position: fixed; bottom: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 0, 0.9);
+            color: black; padding: 10px 20px;
+            border-radius: 50px; font-weight: bold;
+            display: none; z-index: 10002;
+        }
+
         .building-object { position: absolute; transform-origin: bottom center; pointer-events: none; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <b>Kiddow Adventure: South Jakarta</b><br>
-        Indikator Kuning = Lokasi Gedung/Objek
+        <b>Kiddow Adventure: Interactive</b><br>
+        Sentuh gedung untuk membuka Website!
     </div>
 
-    <div id="minimap-container" id="minimap">
+    <div id="interaction-msg">Membuka Website...</div>
+
+    <div id="minimap-container">
         <div id="minimap-player"></div>
-        <!-- Indikator objek lain akan muncul di sini secara otomatis -->
     </div>
     
     <div id="game-container">
@@ -73,6 +85,7 @@
         const objectsLayer = document.getElementById('objects-layer');
         const minimap = document.getElementById('minimap-container');
         const miniPlayer = document.getElementById('minimap-player');
+        const interMsg = document.getElementById('interaction-msg');
 
         const WORLD_SIZE = 3000;
         const miniSize = 150;
@@ -89,9 +102,11 @@
         let currentFrame = 0;
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
-        // Fungsi otomatis tambah objek ke dunia DAN minimap
-        function addObject(x, y, width, height, imgUrl) {
-            // 1. Tambah ke Dunia
+        // Array untuk menyimpan data gedung untuk deteksi tabrakan
+        const buildings = [];
+
+        function addObject(x, y, width, height, imgUrl, linkUrl) {
+            // 1. Tambah ke Dunia Visual
             const div = document.createElement('div');
             div.className = 'building-object';
             div.style.width = width + 'px';
@@ -110,19 +125,53 @@
             dot.style.left = (x / WORLD_SIZE * miniSize) + 'px';
             dot.style.top = (y / WORLD_SIZE * miniSize) + 'px';
             minimap.appendChild(dot);
+
+            // 3. Simpan data untuk deteksi tabrakan
+            buildings.push({
+                x: x,
+                y: y,
+                width: width * 0.5, // Area sensitif (lebih kecil dari gambar agar pas)
+                height: 50,         // Area kaki gedung
+                link: linkUrl,
+                isOpen: false       // Agar tidak membuka terus menerus saat bersentuhan
+            });
         }
 
         function initLevel() {
-            // Gambar Rumput
             ctx.fillStyle = '#2d5e32';
             ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
             
-            // Tambahkan Gedung (Ukuran disesuaikan agar terlihat: 1200x800)
-            addObject(WORLD_SIZE/2, WORLD_SIZE/2, 1200, 800, URL_GEDUNG);
-            
-            // Tambah objek contoh lain (opsional) untuk tes minimap
-            addObject(500, 500, 400, 300, URL_GEDUNG); 
-            addObject(2500, 2000, 400, 300, URL_GEDUNG);
+            // Tambahkan 3 Gedung dengan Web Berbeda
+            addObject(WORLD_SIZE/2, WORLD_SIZE/2, 1200, 800, URL_GEDUNG, "https://www.google.com");
+            addObject(700, 800, 600, 450, URL_GEDUNG, "https://www.wikipedia.org");
+            addObject(2300, 2200, 800, 600, URL_GEDUNG, "https://blog.google");
+        }
+
+        function checkInteractions() {
+            let hitAny = false;
+            buildings.forEach(b => {
+                // Cek apakah player menyentuh area kaki gedung
+                const dx = Math.abs(posX - b.x);
+                const dy = Math.abs(posY - b.y);
+
+                if (dx < b.width / 2 && dy < b.height) {
+                    hitAny = true;
+                    if (!b.isOpen) {
+                        b.isOpen = true; // Kunci agar tidak spam tab
+                        interMsg.style.display = 'block';
+                        interMsg.innerText = `Membuka: ${b.link}`;
+                        
+                        setTimeout(() => {
+                            window.open(b.link, '_blank');
+                        }, 500);
+
+                        // Reset kunci setelah 3 detik menjauh
+                        setTimeout(() => { b.isOpen = false; }, 3000);
+                    }
+                }
+            });
+
+            if (!hitAny) interMsg.style.display = 'none';
         }
 
         function update() {
@@ -140,15 +189,14 @@
             player.style.zIndex = Math.floor(posY);
             if (dirX !== 0) player.style.transform = `scaleX(${dirX})`;
 
-            // Kamera
             const camX = -posX + (window.innerWidth / 2);
             const camY = -posY + (window.innerHeight / 2);
             world.style.transform = `translate(${camX}px, ${camY}px)`;
 
-            // Update Player di Minimap
             miniPlayer.style.left = (posX / WORLD_SIZE * miniSize) + 'px';
             miniPlayer.style.top = (posY / WORLD_SIZE * miniSize) + 'px';
-            
+
+            checkInteractions();
             requestAnimationFrame(update);
         }
 
