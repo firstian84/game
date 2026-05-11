@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Kiddow Adventure - Interactive Buildings</title>
+    <title>Kiddow Adventure - Interactive World</title>
     <style>
         body { margin: 0; background-color: #1a1a1a; overflow: hidden; font-family: sans-serif; }
         #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
@@ -16,7 +16,7 @@
             pointer-events: none;
         }
 
-        /* --- MINIMAP STYLING --- */
+        /* --- UI & MINIMAP --- */
         #minimap-container {
             position: fixed; top: 10px; right: 10px;
             width: 150px; height: 150px;
@@ -42,8 +42,27 @@
             padding: 12px; border-radius: 8px;
             z-index: 10000; border: 1px solid rgba(255,255,255,0.2);
         }
-        
-        /* Notifikasi Interaksi */
+
+        /* --- CUSTOM MODAL NOTIFICATION --- */
+        #custom-modal {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white; padding: 20px;
+            border-radius: 15px; border: 4px solid #ffcc00;
+            text-align: center; z-index: 20000;
+            display: none; box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            min-width: 300px;
+        }
+        #custom-modal p { font-weight: bold; color: #333; margin-bottom: 20px; }
+        .modal-btn {
+            padding: 10px 25px; margin: 0 10px; border: none;
+            border-radius: 5px; cursor: pointer; font-weight: bold;
+        }
+        #btn-yes { background: #28a745; color: white; }
+        #btn-no { background: #dc3545; color: white; }
+        #btn-yes:hover { background: #218838; }
+        #btn-no:hover { background: #c82333; }
+
         #interaction-msg {
             position: fixed; bottom: 20px; left: 50%;
             transform: translateX(-50%);
@@ -59,8 +78,16 @@
 <body>
 
     <div id="ui">
-        <b>Kiddow Adventure: Interactive</b><br>
-        Sentuh gedung untuk membuka Website!
+        <b>Kiddow Adventure: Explorer</b><br>
+        - Gunakan Panah untuk Bergerak<br>
+        - Dekati gedung/pinggir peta untuk interaksi kustom.
+    </div>
+
+    <!-- MODAL KUSTOM -->
+    <div id="custom-modal">
+        <p id="modal-text">Apa ingin melanjutkan ke posisi ini?</p>
+        <button id="btn-yes" class="modal-btn">YA</button>
+        <button id="btn-no" class="modal-btn">TIDAK</button>
     </div>
 
     <div id="interaction-msg">Membuka Website...</div>
@@ -86,6 +113,12 @@
         const minimap = document.getElementById('minimap-container');
         const miniPlayer = document.getElementById('minimap-player');
         const interMsg = document.getElementById('interaction-msg');
+        
+        // Element Modal
+        const modal = document.getElementById('custom-modal');
+        const modalText = document.getElementById('modal-text');
+        const btnYes = document.getElementById('btn-yes');
+        const btnNo = document.getElementById('btn-no');
 
         const WORLD_SIZE = 3000;
         const miniSize = 150;
@@ -97,16 +130,29 @@
         const URL_GEDUNG = 'https://firstian84.github.io/game_siderunner/resjaksel.png';
 
         let posX = WORLD_SIZE / 2;
-        let posY = WORLD_SIZE / 2 + 500; 
-        let speed = 5;
+        let posY = WORLD_SIZE / 2;
+        let speed = 7;
         let currentFrame = 0;
+        let isPaused = false; // Status untuk menghentikan input saat modal muncul
+        let isEdgeTriggered = false; 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
-
-        // Array untuk menyimpan data gedung untuk deteksi tabrakan
         const buildings = [];
 
+        const edgeLinks = {
+            top: "https://www.youtube.com",
+            bottom: "https://www.github.com",
+            left: "https://www.google.com",
+            right: "https://www.wikipedia.org"
+        };
+
+        function stopPlayer() {
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+            keys.ArrowLeft = false;
+            keys.ArrowRight = false;
+        }
+
         function addObject(x, y, width, height, imgUrl, linkUrl) {
-            // 1. Tambah ke Dunia Visual
             const div = document.createElement('div');
             div.className = 'building-object';
             div.style.width = width + 'px';
@@ -119,88 +165,117 @@
             div.style.zIndex = Math.floor(y);
             objectsLayer.appendChild(div);
 
-            // 2. Tambah Indikator ke Minimap
             const dot = document.createElement('div');
             dot.className = 'minimap-dot';
             dot.style.left = (x / WORLD_SIZE * miniSize) + 'px';
             dot.style.top = (y / WORLD_SIZE * miniSize) + 'px';
             minimap.appendChild(dot);
 
-            // 3. Simpan data untuk deteksi tabrakan
-            buildings.push({
-                x: x,
-                y: y,
-                width: width * 0.5, // Area sensitif (lebih kecil dari gambar agar pas)
-                height: 50,         // Area kaki gedung
-                link: linkUrl,
-                isOpen: false       // Agar tidak membuka terus menerus saat bersentuhan
-            });
+            buildings.push({ x: x, y: y, width: width * 0.4, height: 60, link: linkUrl, isOpen: false });
         }
 
         function initLevel() {
             ctx.fillStyle = '#2d5e32';
             ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-            
-            // Tambahkan 3 Gedung dengan Web Berbeda
-            addObject(WORLD_SIZE/2, WORLD_SIZE/2, 1200, 800, URL_GEDUNG, "https://www.google.com");
-            addObject(700, 800, 600, 450, URL_GEDUNG, "https://www.wikipedia.org");
-            addObject(2300, 2200, 800, 600, URL_GEDUNG, "https://blog.google");
+            addObject(WORLD_SIZE/2, WORLD_SIZE/2, 1000, 700, URL_GEDUNG, "https://www.google.com");
+            addObject(800, 800, 500, 350, URL_GEDUNG, "https://www.wikipedia.org");
+            addObject(2200, 2200, 700, 500, URL_GEDUNG, "https://blog.google");
+        }
+
+        // FUNGSI MODAL KUSTOM
+        function showCustomModal(description, url) {
+            isPaused = true; 
+            stopPlayer();
+            modalText.innerHTML = `<b>Terdeteksi!</b><br>${description}<br><br>Melanjutkan ke posisi ini?`;
+            modal.style.display = 'block';
+
+            // Bersihkan event listener lama
+            btnYes.onclick = null;
+            btnNo.onclick = null;
+
+            btnYes.onclick = () => {
+                modal.style.display = 'none';
+                interMsg.style.display = 'block';
+                setTimeout(() => {
+                    window.open(url, '_blank');
+                    interMsg.style.display = 'none';
+                    isPaused = false;
+                }, 500);
+            };
+
+            btnNo.onclick = () => {
+                modal.style.display = 'none';
+                isPaused = false;
+            };
         }
 
         function checkInteractions() {
-            let hitAny = false;
+            if (isPaused) return;
             buildings.forEach(b => {
-                // Cek apakah player menyentuh area kaki gedung
                 const dx = Math.abs(posX - b.x);
                 const dy = Math.abs(posY - b.y);
-
                 if (dx < b.width / 2 && dy < b.height) {
-                    hitAny = true;
                     if (!b.isOpen) {
-                        b.isOpen = true; // Kunci agar tidak spam tab
-                        interMsg.style.display = 'block';
-                        interMsg.innerText = `Membuka: ${b.link}`;
-                        
-                        setTimeout(() => {
-                            window.open(b.link, '_blank');
-                        }, 500);
-
-                        // Reset kunci setelah 3 detik menjauh
-                        setTimeout(() => { b.isOpen = false; }, 3000);
+                        b.isOpen = true;
+                        showCustomModal("Gedung Terdeteksi", b.link);
+                        setTimeout(() => { b.isOpen = false; }, 5000);
                     }
                 }
             });
-
-            if (!hitAny) interMsg.style.display = 'none';
         }
 
         function update() {
-            let dirX = 0;
-            if (keys.ArrowUp) posY -= speed;
-            if (keys.ArrowDown) posY += speed;
-            if (keys.ArrowLeft) { posX -= speed; dirX = -1; }
-            if (keys.ArrowRight) { posX += speed; dirX = 1; }
+            if (!isPaused) {
+                let dirX = 0;
+                if (keys.ArrowUp) posY -= speed;
+                if (keys.ArrowDown) posY += speed;
+                if (keys.ArrowLeft) { posX -= speed; dirX = -1; }
+                if (keys.ArrowRight) { posX += speed; dirX = 1; }
 
-            posX = Math.max(0, Math.min(WORLD_SIZE, posX));
-            posY = Math.max(0, Math.min(WORLD_SIZE, posY));
+                // EDGE DETECTION
+                let triggeredUrl = null;
+                if (posY <= 0) triggeredUrl = edgeLinks.top;
+                else if (posY >= WORLD_SIZE) triggeredUrl = edgeLinks.bottom;
+                else if (posX <= 0) triggeredUrl = edgeLinks.left;
+                else if (posX >= WORLD_SIZE) triggeredUrl = edgeLinks.right;
 
-            player.style.left = posX + 'px';
-            player.style.top = posY + 'px';
-            player.style.zIndex = Math.floor(posY);
-            if (dirX !== 0) player.style.transform = `scaleX(${dirX})`;
+                if (triggeredUrl && !isEdgeTriggered) {
+                    isEdgeTriggered = true;
+                    // Beri jarak sedikit dari pinggir agar tidak macet
+                    if (posY <= 0) posY = 60;
+                    if (posY >= WORLD_SIZE) posY = WORLD_SIZE - 60;
+                    if (posX <= 0) posX = 60;
+                    if (posX >= WORLD_SIZE) posX = WORLD_SIZE - 60;
 
-            const camX = -posX + (window.innerWidth / 2);
-            const camY = -posY + (window.innerHeight / 2);
-            world.style.transform = `translate(${camX}px, ${camY}px)`;
+                    showCustomModal("Batas Peta Terdeteksi", triggeredUrl);
+                    setTimeout(() => { isEdgeTriggered = false; }, 4000);
+                }
 
-            miniPlayer.style.left = (posX / WORLD_SIZE * miniSize) + 'px';
-            miniPlayer.style.top = (posY / WORLD_SIZE * miniSize) + 'px';
+                posX = Math.max(0, Math.min(WORLD_SIZE, posX));
+                posY = Math.max(0, Math.min(WORLD_SIZE, posY));
 
-            checkInteractions();
+                player.style.left = posX + 'px';
+                player.style.top = posY + 'px';
+                player.style.zIndex = Math.floor(posY);
+                if (dirX !== 0) player.style.transform = `scaleX(${dirX})`;
+
+                const camX = -posX + (window.innerWidth / 2);
+                const camY = -posY + (window.innerHeight / 2);
+                world.style.transform = `translate(${camX}px, ${camY}px)`;
+
+                miniPlayer.style.left = (posX / WORLD_SIZE * miniSize) + 'px';
+                miniPlayer.style.top = (posY / WORLD_SIZE * miniSize) + 'px';
+
+                checkInteractions();
+            }
             requestAnimationFrame(update);
         }
 
         function animateSprite() {
+            if (isPaused) {
+                player.style.backgroundImage = `url('${URL_IDLE}')`;
+                return;
+            }
             const isMoving = keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight;
             player.style.backgroundImage = isMoving ? `url('${URL_RUN}')` : `url('${URL_IDLE}')`;
             const col = currentFrame % 5;
@@ -209,7 +284,7 @@
             currentFrame = (currentFrame + 1) % 25;
         }
 
-        window.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+        window.addEventListener('keydown', (e) => { if (!isPaused && keys.hasOwnProperty(e.key)) keys[e.key] = true; });
         window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
 
         initLevel();
